@@ -1,0 +1,6 @@
+/*
+  # huggingface.co rejects requests with a *.workers.dev Referer (404, no CORS), which breaks Kokoro's model download
+  Referrer-Policy: no-referrer
+
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable

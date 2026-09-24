@@ -1,0 +1,20 @@
+{
+  "name": "Default",
+  "width": 512,
+  "height": 512,
+  "mouthAnchor": { "x": 256, "y": 320 },
+  "pivot": { "x": 256, "y": 400 },
+  "blink": { "minInterval": 2, "maxInterval": 6, "duration": 0.16 },
+  "layers": {
+    "base": "base.svg",
+    "eyes_open": "eyes_open.svg",
+    "eyes_half": "eyes_half.svg",
+    "eyes_closed": "eyes_closed.svg",
+    "mouth_X": "mouth_X.svg",
+    "mouth_A": "mouth_A.svg",
+    "mouth_I": "mouth_I.svg",
+    "mouth_U": "mouth_U.svg",
+    "mouth_E": "mouth_E.svg",
+    "mouth_O": "mouth_O.svg"
+  }
+}

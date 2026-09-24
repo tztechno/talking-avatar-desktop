@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs><clipPath id="m"><ellipse cx="256" cy="320" rx="30" ry="8"/></clipPath></defs>
+  <ellipse cx="256" cy="320" rx="30" ry="8" fill="#6b1f2a"/>
+  <g clip-path="url(#m)">
+    <rect x="226" y="312" width="60" height="5" fill="#ffffff"/>
+    
+  </g>
+  <ellipse cx="256" cy="320" rx="30" ry="8" fill="none" stroke="#9c4a4a" stroke-width="3"/>
+</svg>

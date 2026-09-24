@@ -1,0 +1,13 @@
+{
+  "type": "photo",
+  "name": "Sample photo (SadTalker art_3)",
+  "image": "face.png",
+  "face": {
+    "mouth": { "left": { "x": 372, "y": 511 }, "right": { "x": 560, "y": 511 }, "center": { "x": 466, "y": 512 } },
+    "chin": { "x": 463, "y": 655 },
+    "eyes": [
+      { "outer": { "x": 305, "y": 272 }, "inner": { "x": 392, "y": 270 }, "top": { "x": 345, "y": 261 }, "bottom": { "x": 345, "y": 283 } },
+      { "outer": { "x": 622, "y": 272 }, "inner": { "x": 535, "y": 272 }, "top": { "x": 578, "y": 262 }, "bottom": { "x": 578, "y": 284 } }
+    ]
+  }
+}

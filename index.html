@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Talking Avatar</title>
+    <link rel="icon" href="avatars/default/base.svg" type="image/svg+xml" />
+  </head>
+  <body>
+    <header class="topbar">
+      <h1>Talking Avatar</h1>
+      <span class="hint">Everything runs in your browser — no text leaves this page.</span>
+    </header>
+
+    <main class="layout">
+      <section class="stage-panel" aria-label="Avatar">
+        <div class="stage" id="stage">
+          <canvas id="avatar-canvas" aria-label="Animated avatar"></canvas>
+          <div class="drop-hint" id="drop-hint">Drop a portrait photo, an avatar folder or a .zip</div>
+        </div>
+
+        <div class="row wrap">
+          <label class="field">
+            <span>Background</span>
+            <select id="bg-mode">
+              <option value="transparent">Transparent</option>
+              <option value="color">Colour</option>
+              <option value="chroma">Chroma green</option>
+            </select>
+          </label>
+          <input type="color" id="bg-color" value="#dfe7f5" aria-label="Background colour" />
+          <span class="spacer"></span>
+          <label class="button secondary">
+            Load photo
+            <input type="file" id="avatar-photo" accept="image/*" hidden />
+          </label>
+          <label class="button secondary">
+            Load folder
+            <input type="file" id="avatar-folder" webkitdirectory multiple hidden />
+          </label>
+          <label class="button secondary">
+            Load .zip
+            <input type="file" id="avatar-zip" accept=".zip,application/zip" hidden />
+          </label>
+          <select id="avatar-builtin" aria-label="Built-in avatar">
+            <option value="sample-photo">Sample photo</option>
+            <option value="default">Illustration</option>
+          </select>
+          <button class="secondary" id="mark-mouth" type="button" hidden title="Click the two corners of the mouth on the photo">Mark mouth</button>
+        </div>
+
+        <details class="debug">
+          <summary>Mouth shapes (debug) <span id="fps" class="muted"></span></summary>
+          <div class="row wrap" id="viseme-buttons" role="group" aria-label="Manual mouth shape"></div>
+        </details>
+      </section>
+
+      <section class="controls-panel" aria-label="Controls">
+        <div class="segmented" role="radiogroup" aria-label="Speech engine">
+          <label><input type="radio" name="engine" value="kokoro" /> <span>Kokoro (AI voice, English)</span></label>
+          <label><input type="radio" name="engine" value="webspeech" /> <span>Browser voice</span></label>
+        </div>
+
+        <div id="kokoro-load" class="card" hidden>
+          <p>Kokoro runs a ~90&nbsp;MB model in your browser. It downloads once and is cached afterwards.</p>
+          <div class="row">
+            <button id="kokoro-load-btn" type="button">Download &amp; load model</button>
+            <progress id="kokoro-progress" max="1" value="0" hidden></progress>
+            <span id="kokoro-progress-label" class="muted"></span>
+          </div>
+        </div>
+
+        <div class="row wrap">
+          <label class="field grow">
+            <span>Voice</span>
+            <select id="voice"></select>
+          </label>
+          <label class="field">
+            <span>Speed <output id="speed-out">1.0×</output></span>
+            <input type="range" id="speed" min="0.5" max="2" step="0.1" value="1" />
+          </label>
+        </div>
+
+        <div class="text-wrap">
+          <div class="text-backdrop" id="text-backdrop" aria-hidden="true"></div>
+          <textarea id="text" rows="9" spellcheck="false" aria-label="Text to speak"></textarea>
+        </div>
+
+        <div class="row wrap">
+          <button id="speak" type="button" class="primary">Speak</button>
+          <button id="pause" type="button" class="secondary" disabled>Pause</button>
+          <button id="stop" type="button" class="secondary" disabled>Stop</button>
+          <span class="spacer"></span>
+          <button id="record" type="button" class="secondary" title="Speak and download a video of the avatar">Speak &amp; record video</button>
+        </div>
+
+        <p id="status" class="status" role="status" aria-live="polite"></p>
+      </section>
+    </main>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
