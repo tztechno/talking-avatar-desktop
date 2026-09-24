@@ -3,9 +3,11 @@ import { AvatarLoadError, loadAvatarFromFiles, loadAvatarFromUrl, type LoadedAva
 import type { Point } from "./avatar/manifest";
 import { AvatarRenderer } from "./avatar/renderer";
 import { download, extensionFor, Recorder } from "./export/recorder";
+import { AudioLipSync } from "./lipsync/audio-lipsync";
 import { EventLipSync } from "./lipsync/event-lipsync";
 import { VISEMES, type Viseme } from "./lipsync/types";
-import type { SpeechSession } from "./tts/types";
+import { EdgeEngine, type EdgeSession } from "./tts/edge-engine";
+import type { EngineId, SpeechSession, TTSEngine } from "./tts/types";
 import { WebSpeechEngine } from "./tts/webspeech-engine";
 import { TextHighlighter } from "./ui/highlighter";
 import { loadSettings, saveSettings } from "./ui/settings";
@@ -39,7 +41,16 @@ const ui = {
 const settings = loadSettings();
 const now = () => performance.now() / 1000;
 
+let audioCtx: AudioContext | null = null;
+const getAudioCtx = () => (audioCtx ??= new AudioContext());
+
+const edge = new EdgeEngine(getAudioCtx);
 const webspeech = new WebSpeechEngine();
+const engines: Record<EngineId, TTSEngine> = {
+  edge,
+  webspeech,
+};
+
 const renderer = new AvatarRenderer(ui.canvas);
 const highlighter = new TextHighlighter(ui.text, ui.backdrop);
 
@@ -253,11 +264,13 @@ function renderVisemeButtons(): void {
 
 setInterval(() => (ui.fps.textContent = `${renderer.fps.toFixed(0)} fps`), 1000);
 
-// ---------- voices ----------
+// ---------- engine & voices ----------
+
+const engine = () => engines[settings.engine];
 
 function renderVoices(): void {
-  const list = webspeech.voices();
-  const wanted = settings.voice;
+  const list = engine().voices();
+  const wanted = settings.voice[settings.engine];
   ui.voice.replaceChildren();
   if (!list.length) {
     ui.voice.append(new Option("No voices found", ""));
@@ -265,7 +278,7 @@ function renderVoices(): void {
     return;
   }
   ui.voice.disabled = false;
-  // Group by language so long OS voice lists stay navigable
+  // Group by language so long voice lists stay navigable
   const groups = new Map<string, HTMLOptGroupElement>();
   const sorted = [...list].sort((a, b) => a.lang.localeCompare(b.lang) || a.name.localeCompare(b.name));
   for (const v of sorted) {
@@ -277,12 +290,36 @@ function renderVoices(): void {
     }
     g.append(new Option(v.name, v.id));
   }
-  const fallback = list.find((v) => v.lang.toLowerCase().startsWith(navigator.language.slice(0, 2))) ?? list[0];
+  const fallback =
+    list.find((v) => v.lang.toLowerCase().startsWith(navigator.language.slice(0, 2))) ??
+    list.find((v) => v.id.includes("Nanami")) ??
+    list[0];
   ui.voice.value = list.some((v) => v.id === wanted) ? wanted : fallback.id;
 }
 
+function renderEngine(): void {
+  for (const r of document.querySelectorAll<HTMLInputElement>('input[name="engine"]')) {
+    r.checked = r.value === settings.engine;
+  }
+  ui.record.title =
+    settings.engine === "webspeech"
+      ? "OS browser voices cannot be captured: the video will have no sound"
+      : "Speak and download a video of the avatar (with audio)";
+  renderVoices();
+  updateButtons();
+}
+
+for (const r of document.querySelectorAll<HTMLInputElement>('input[name="engine"]')) {
+  r.addEventListener("change", () => {
+    stopSpeaking();
+    settings.engine = r.value as EngineId;
+    saveSettings(settings);
+    renderEngine();
+  });
+}
+
 ui.voice.addEventListener("change", () => {
-  settings.voice = ui.voice.value;
+  settings.voice[settings.engine] = ui.voice.value;
   saveSettings(settings);
 });
 
@@ -298,7 +335,7 @@ ui.speed.addEventListener("input", () => {
 
 function updateButtons(): void {
   const active = !!session;
-  const ready = WebSpeechEngine.supported && avatarReady();
+  const ready = avatarReady();
   ui.speak.disabled = active || !ready;
   ui.record.disabled = active || !ready || !Recorder.supported;
   ui.markMouth.disabled = avatarBusy;
@@ -320,37 +357,52 @@ async function speak(record: boolean): Promise<void> {
 
   let s: SpeechSession;
   try {
-    s = webspeech.speak(text, { voice: ui.voice.value, speed: settings.speed });
+    s = engine().speak(text, { voice: ui.voice.value, speed: settings.speed });
   } catch (e) {
     return setStatus(errorText(e), true);
   }
   session = s;
   paused = false;
 
+  const isEdge = settings.engine === "edge";
   const eventSync = new EventLipSync(text, settings.speed);
-  renderer.lipSync = eventSync;
-  setStatus("Speaking…");
+  let audioSync: AudioLipSync | null = null;
 
-  if (record) {
-    try {
-      recorder = new Recorder(ui.canvas, s.audioNode);
-      recorder.start();
-    } catch (e) {
-      recorder = null;
-      setStatus(`Recording unavailable: ${errorText(e)}`, true);
-    }
-  }
+  renderer.lipSync = eventSync;
+  setStatus(isEdge ? "Generating AI speech…" : "Speaking…");
 
   s.on("start", () => {
-    eventSync.start(now());
+    if (isEdge && (s as EdgeSession).analyser) {
+      audioSync = new AudioLipSync((s as EdgeSession).analyser);
+      renderer.lipSync = audioSync;
+    } else {
+      eventSync.start(now());
+      renderer.lipSync = eventSync;
+    }
     renderer.talking = true;
-    setStatus(record && recorder ? "Speaking and recording…" : "Speaking…");
+
+    if (record) {
+      try {
+        recorder = new Recorder(ui.canvas, s.audioNode);
+        recorder.start();
+        setStatus("Speaking and recording…");
+      } catch (e) {
+        recorder = null;
+        setStatus(`Recording unavailable: ${errorText(e)}`, true);
+      }
+    } else {
+      setStatus("Speaking…");
+    }
+    updateButtons();
   });
+
   s.on("sentence", (ev) => {
     highlighter.highlight(ev.charIndex, ev.text.length);
     renderer.nod();
   });
-  s.on("word", (w) => eventSync.word(w.charIndex, w.charLength, now()));
+  s.on("word", (w) => {
+    if (!audioSync) eventSync.word(w.charIndex, w.charLength, now());
+  });
   s.on("error", (e) => setStatus(errorText(e), true));
   s.on("end", () => {
     eventSync.end();
@@ -404,16 +456,19 @@ async function boot(): Promise<void> {
   renderer.start();
   await loadAvatar(() => loadAvatarFromUrl(builtinAvatar()));
 
+  // Initialize both engines
+  const initPromises: Promise<void>[] = [];
+  initPromises.push(edge.init().catch(() => undefined));
   if (WebSpeechEngine.supported) {
-    await webspeech.init().catch(() => undefined);
-    renderVoices();
-    updateButtons();
-  } else {
-    setStatus("Web Speech API is not supported in this environment.", true);
+    initPromises.push(webspeech.init().catch(() => undefined));
   }
+
+  await Promise.all(initPromises);
+  renderEngine();
+  updateButtons();
 }
 
 void boot();
 
 // Hook for integration tests
-Object.assign(window, { __talkingAvatar: { renderer, webspeech } });
+Object.assign(window, { __talkingAvatar: { renderer, edge, webspeech } });

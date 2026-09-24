@@ -1,6 +1,15 @@
 import { describe, expect, it } from "vitest";
+import { guessVisemeFromBands } from "../src/lipsync/audio-lipsync";
 import { EventLipSync } from "../src/lipsync/event-lipsync";
 import { Blinker } from "../src/avatar/blink";
+
+describe("audio lip-sync helpers", () => {
+  it("guesses shapes from bands", () => {
+    expect(guessVisemeFromBands(1, 1, 1.5)).toBe("I");
+    expect(guessVisemeFromBands(7, 2, 1)).toBe("U");
+    expect(guessVisemeFromBands(4, 4, 2)).toBe("A");
+  });
+});
 
 describe("EventLipSync", () => {
   it("opens on a word and rests afterwards", () => {

@@ -1,5 +1,8 @@
+import type { EngineId } from "../tts/types";
+
 export interface Settings {
-  voice: string;
+  engine: EngineId;
+  voice: Record<EngineId, string>;
   speed: number;
   bgMode: "transparent" | "color" | "chroma";
   bgColor: string;
@@ -11,7 +14,8 @@ export interface Settings {
 const KEY = "talking-avatar:settings";
 
 export const DEFAULTS: Settings = {
-  voice: "",
+  engine: "edge",
+  voice: { edge: "ja-JP-NanamiNeural", webspeech: "" },
   speed: 1,
   bgMode: "transparent",
   bgColor: "#dfe7f5",
@@ -27,10 +31,16 @@ export function loadSettings(): Settings {
     const raw = localStorage.getItem(KEY);
     if (raw) {
       const parsed = JSON.parse(raw);
+      const voice: Record<EngineId, string> =
+        typeof parsed.voice === "object" && parsed.voice !== null
+          ? { edge: parsed.voice.edge || "ja-JP-NanamiNeural", webspeech: parsed.voice.webspeech || "" }
+          : { edge: "ja-JP-NanamiNeural", webspeech: typeof parsed.voice === "string" ? parsed.voice : "" };
+
       return {
         ...DEFAULTS,
         ...parsed,
-        voice: typeof parsed.voice === "string" ? parsed.voice : (parsed.voice?.webspeech || ""),
+        engine: parsed.engine === "webspeech" || parsed.engine === "edge" ? parsed.engine : "edge",
+        voice,
       };
     }
   } catch {

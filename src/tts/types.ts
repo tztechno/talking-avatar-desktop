@@ -1,3 +1,5 @@
+export type EngineId = "edge" | "webspeech";
+
 export interface VoiceInfo {
   id: string;
   name: string;

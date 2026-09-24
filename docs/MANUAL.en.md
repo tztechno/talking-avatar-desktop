@@ -37,10 +37,11 @@ All processing is executed locally on your computer — no text, voice, or photo
 | **Avatar Selector** | Switch between built-in presets: **Sample photo** or **Illustration**. |
 | **Mark mouth** | Re-mark the mouth corners manually if photo automatic face detection requires adjustment. |
 | **Mouth shapes (debug)** | Test mouth visemes manually (A, I, U, E, O, X) and monitor rendering FPS. |
-| **Voice / Speed** | Select speaker voice and playback rate (0.5x to 2.0x). Supports Japanese (Kyoko, Otoya, Siri, etc.), English, and all OS-installed system languages. |
+| **Speech engine** | ・**Edge Neural Voice (AI Voice, High Quality)**: ~50 high-quality Neural voices for Japanese & English (Nanami, Keita, Jenny, Guy, etc.)<br>・**OS System Voice (Offline)**: Built-in operating system voices |
+| **Voice / Speed** | Select speaker voice and playback rate (0.5x to 2.0x). |
 | **Text Area** | Enter or paste the text to speak. Active sentences are highlighted in real time. |
 | **Speak / Pause / Stop** | Start, pause, or cancel speech playback. |
-| **Speak & record video** | Animate and record video & audio output, saving directly as a video file. |
+| **Speak & record video** | Animate and record video with sound, saving directly as a video file (.webm / .mp4). |
 | **Status Bar** | Displays application status, notifications, and messages. |
 
 ---
@@ -48,10 +49,11 @@ All processing is executed locally on your computer — no text, voice, or photo
 ## 3. Basic Usage
 
 ### 3.1 Speaking Text
-1. Choose your preferred language voice from the **Voice** dropdown (e.g. Japanese voices like `Kyoko` or `Otoya`, or English voices).
-2. Adjust the playback rate with the **Speed** slider.
-3. Type or paste your text into the text area.
-4. Click **"Speak"** to start speech immediately with real-time avatar mouth animation.
+1. Select the **Speech engine** (**Edge Neural Voice** recommended for natural AI speech).
+2. Choose your preferred voice from the **Voice** dropdown (e.g. Japanese `Nanami (Female)`, `Keita (Male)` or English `Jenny (US)`, `Guy (US)`).
+3. Adjust the playback rate with the **Speed** slider.
+4. Type or paste your text into the text area.
+5. Click **"Speak"** to start speech with smooth, audio-driven avatar lip sync.
 
 ---
 
