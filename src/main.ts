@@ -3,11 +3,9 @@ import { AvatarLoadError, loadAvatarFromFiles, loadAvatarFromUrl, type LoadedAva
 import type { Point } from "./avatar/manifest";
 import { AvatarRenderer } from "./avatar/renderer";
 import { download, extensionFor, Recorder } from "./export/recorder";
-import { AudioLipSync } from "./lipsync/audio-lipsync";
 import { EventLipSync } from "./lipsync/event-lipsync";
 import { VISEMES, type Viseme } from "./lipsync/types";
-import { KokoroEngine, KokoroSession } from "./tts/kokoro-engine";
-import type { EngineId, SpeechSession, TTSEngine } from "./tts/types";
+import type { SpeechSession } from "./tts/types";
 import { WebSpeechEngine } from "./tts/webspeech-engine";
 import { TextHighlighter } from "./ui/highlighter";
 import { loadSettings, saveSettings } from "./ui/settings";
@@ -26,10 +24,6 @@ const ui = {
   markMouth: $<HTMLButtonElement>("mark-mouth"),
   visemeButtons: $("viseme-buttons"),
   fps: $("fps"),
-  kokoroLoad: $("kokoro-load"),
-  kokoroLoadBtn: $<HTMLButtonElement>("kokoro-load-btn"),
-  kokoroProgress: $<HTMLProgressElement>("kokoro-progress"),
-  kokoroProgressLabel: $("kokoro-progress-label"),
   voice: $<HTMLSelectElement>("voice"),
   speed: $<HTMLInputElement>("speed"),
   speedOut: $<HTMLOutputElement>("speed-out"),
@@ -45,14 +39,7 @@ const ui = {
 const settings = loadSettings();
 const now = () => performance.now() / 1000;
 
-let audioCtx: AudioContext | null = null;
-// Created lazily on a user gesture so Safari/Chrome allow playback
-const getAudioCtx = () => (audioCtx ??= new AudioContext());
-
-const kokoro = new KokoroEngine(getAudioCtx);
 const webspeech = new WebSpeechEngine();
-const engines: Record<EngineId, TTSEngine> = { kokoro, webspeech };
-
 const renderer = new AvatarRenderer(ui.canvas);
 const highlighter = new TextHighlighter(ui.text, ui.backdrop);
 
@@ -87,7 +74,6 @@ function avatarReady(): boolean {
 /** Tells the user whether Speak can be pressed now, or what is still missing. */
 function readyHint(): string {
   if (!avatarReady()) return "";
-  if (settings.engine === "kokoro" && !kokoro.loaded) return "Load the Kokoro model (or choose Browser voice) to speak.";
   return "Ready — press Speak.";
 }
 
@@ -144,7 +130,6 @@ ui.canvas.addEventListener("click", (e) => {
   const [a, b] = marking[0].x <= marking[1].x ? marking : [marking[1], marking[0]];
   cancelMarking();
   try {
-    // Keep detected eyes; the chin estimate follows the new mouth
     renderer.setPhotoFace({ mouth: { left: a, right: b }, eyes: current.photo.face?.eyes });
     updateButtons();
     setStatus(`Mouth marked. ${readyHint()}`);
@@ -184,7 +169,6 @@ async function loadAvatar(load: () => Promise<LoadedAvatar>, busyText = "Loading
   }
 }
 
-/** Loads picked or dropped files; a single picture is a photo, so say that faces are being found. */
 function loadFiles(files: File[]): void {
   if (!files.length) return;
   const photo = files.length === 1 && files[0].type.startsWith("image/");
@@ -225,7 +209,6 @@ ui.stage.addEventListener("drop", (e) => {
 async function collectDropped(dt: DataTransfer | null): Promise<File[]> {
   if (!dt) return [];
   const entries = [...dt.items].map((i) => i.webkitGetAsEntry?.()).filter((e): e is FileSystemEntry => !!e);
-  // A dropped directory: read its (flat) contents
   const dir = entries.find((e) => e.isDirectory) as FileSystemDirectoryEntry | undefined;
   if (!dir) return [...dt.files];
   const children = await new Promise<FileSystemEntry[]>((res, rej) => dir.createReader().readEntries(res, rej));
@@ -270,16 +253,14 @@ function renderVisemeButtons(): void {
 
 setInterval(() => (ui.fps.textContent = `${renderer.fps.toFixed(0)} fps`), 1000);
 
-// ---------- engine & voices ----------
-
-const engine = () => engines[settings.engine];
+// ---------- voices ----------
 
 function renderVoices(): void {
-  const list = engine().voices();
-  const wanted = settings.voice[settings.engine];
+  const list = webspeech.voices();
+  const wanted = settings.voice;
   ui.voice.replaceChildren();
   if (!list.length) {
-    ui.voice.append(new Option(settings.engine === "kokoro" ? "Load the model to see voices" : "No voices found", ""));
+    ui.voice.append(new Option("No voices found", ""));
     ui.voice.disabled = true;
     return;
   }
@@ -294,35 +275,14 @@ function renderVoices(): void {
       groups.set(v.lang, g);
       ui.voice.append(g);
     }
-    g.append(new Option(settings.engine === "kokoro" ? `${v.name} (${v.id})` : v.name, v.id));
+    g.append(new Option(v.name, v.id));
   }
   const fallback = list.find((v) => v.lang.toLowerCase().startsWith(navigator.language.slice(0, 2))) ?? list[0];
-  ui.voice.value = list.some((v) => v.id === wanted) ? wanted! : fallback.id;
-}
-
-function renderEngine(): void {
-  for (const r of document.querySelectorAll<HTMLInputElement>('input[name="engine"]')) r.checked = r.value === settings.engine;
-  ui.kokoroLoad.hidden = settings.engine !== "kokoro" || kokoro.loaded;
-  ui.record.title =
-    settings.engine === "webspeech"
-      ? "Browser voices cannot be captured: the video will have no sound"
-      : "Speak and download a video of the avatar";
-  renderVoices();
-  updateButtons();
-}
-
-for (const r of document.querySelectorAll<HTMLInputElement>('input[name="engine"]')) {
-  r.addEventListener("change", () => {
-    stopSpeaking();
-    settings.engine = r.value as EngineId;
-    saveSettings(settings);
-    renderEngine();
-    if (settings.engine === "kokoro" && !kokoro.loaded && settings.kokoroCached) void loadKokoro();
-  });
+  ui.voice.value = list.some((v) => v.id === wanted) ? wanted : fallback.id;
 }
 
 ui.voice.addEventListener("change", () => {
-  settings.voice[settings.engine] = ui.voice.value;
+  settings.voice = ui.voice.value;
   saveSettings(settings);
 });
 
@@ -334,39 +294,11 @@ ui.speed.addEventListener("input", () => {
   saveSettings(settings);
 });
 
-let kokoroLoading = false;
-async function loadKokoro(): Promise<void> {
-  if (kokoroLoading || kokoro.loaded) return;
-  kokoroLoading = true;
-  ui.kokoroLoadBtn.disabled = true;
-  ui.kokoroProgress.hidden = false;
-  ui.kokoroProgressLabel.textContent = "Starting…";
-  updateButtons();
-  try {
-    await kokoro.init((p) => {
-      ui.kokoroProgress.value = p;
-      ui.kokoroProgressLabel.textContent = `${Math.round(p * 100)}%`;
-    });
-    settings.kokoroCached = true;
-    saveSettings(settings);
-    setStatus(`Kokoro ready (${kokoro.device === "webgpu" ? "WebGPU" : "WASM"}). ${readyHint()}`);
-  } catch (e) {
-    setStatus(`Kokoro failed to load: ${errorText(e)}\nYou can still use a browser voice.`, true);
-  } finally {
-    kokoroLoading = false;
-    ui.kokoroLoadBtn.disabled = false;
-    ui.kokoroProgress.hidden = true;
-    ui.kokoroProgressLabel.textContent = "";
-    renderEngine();
-  }
-}
-ui.kokoroLoadBtn.addEventListener("click", () => void loadKokoro());
-
 // ---------- speaking ----------
 
 function updateButtons(): void {
   const active = !!session;
-  const ready = (settings.engine === "webspeech" ? WebSpeechEngine.supported : kokoro.loaded) && avatarReady();
+  const ready = WebSpeechEngine.supported && avatarReady();
   ui.speak.disabled = active || !ready;
   ui.record.disabled = active || !ready || !Recorder.supported;
   ui.markMouth.disabled = avatarBusy;
@@ -388,23 +320,16 @@ async function speak(record: boolean): Promise<void> {
 
   let s: SpeechSession;
   try {
-    s = engine().speak(text, { voice: ui.voice.value, speed: settings.speed });
+    s = webspeech.speak(text, { voice: ui.voice.value, speed: settings.speed });
   } catch (e) {
     return setStatus(errorText(e), true);
   }
   session = s;
   paused = false;
-  const started = now();
 
-  let eventSync: EventLipSync | null = null;
-  if (s instanceof KokoroSession) {
-    renderer.lipSync = new AudioLipSync(s.queue);
-    setStatus("Generating speech…");
-  } else {
-    eventSync = new EventLipSync(text, settings.speed);
-    renderer.lipSync = eventSync;
-    setStatus("Speaking…");
-  }
+  const eventSync = new EventLipSync(text, settings.speed);
+  renderer.lipSync = eventSync;
+  setStatus("Speaking…");
 
   if (record) {
     try {
@@ -417,21 +342,18 @@ async function speak(record: boolean): Promise<void> {
   }
 
   s.on("start", () => {
-    eventSync?.start(now());
+    eventSync.start(now());
     renderer.talking = true;
-    if (s instanceof KokoroSession && import.meta.env.DEV) {
-      console.debug(`[kokoro] first audio after ${((now() - started) * 1000).toFixed(0)} ms`);
-    }
     setStatus(record && recorder ? "Speaking and recording…" : "Speaking…");
   });
   s.on("sentence", (ev) => {
     highlighter.highlight(ev.charIndex, ev.text.length);
     renderer.nod();
   });
-  s.on("word", (w) => eventSync?.word(w.charIndex, w.charLength, now()));
+  s.on("word", (w) => eventSync.word(w.charIndex, w.charLength, now()));
   s.on("error", (e) => setStatus(errorText(e), true));
   s.on("end", () => {
-    eventSync?.end();
+    eventSync.end();
     renderer.talking = false;
     highlighter.clear();
     if (session === s) {
@@ -448,7 +370,6 @@ async function speak(record: boolean): Promise<void> {
 async function finishRecording(): Promise<void> {
   const rec = recorder!;
   recorder = null;
-  // Let the final mouth-close frame land in the video
   await new Promise((r) => setTimeout(r, 300));
   const blob = await rec.stop();
   if (!blob.size) return setStatus("Recording was empty.", true);
@@ -480,20 +401,19 @@ async function boot(): Promise<void> {
   renderSpeed();
   applyBackground();
   renderVisemeButtons();
-  renderEngine();
   renderer.start();
   await loadAvatar(() => loadAvatarFromUrl(builtinAvatar()));
 
   if (WebSpeechEngine.supported) {
     await webspeech.init().catch(() => undefined);
-    renderEngine();
-  } else if (settings.engine === "webspeech") {
-    setStatus("This browser has no built-in speech voices. Switch to Kokoro.", true);
+    renderVoices();
+    updateButtons();
+  } else {
+    setStatus("Web Speech API is not supported in this environment.", true);
   }
-  if (settings.engine === "kokoro" && settings.kokoroCached) void loadKokoro();
 }
 
 void boot();
 
 // Hook for integration tests
-Object.assign(window, { __talkingAvatar: { renderer, engines } });
+Object.assign(window, { __talkingAvatar: { renderer, webspeech } });

@@ -1,14 +1,8 @@
-import type { EngineId } from "../tts/types";
-
 export interface Settings {
-  engine: EngineId;
-  /** Last voice per engine */
-  voice: Partial<Record<EngineId, string>>;
+  voice: string;
   speed: number;
   bgMode: "transparent" | "color" | "chroma";
   bgColor: string;
-  /** Set once Kokoro has loaded successfully, so it auto-loads from cache next time */
-  kokoroCached: boolean;
   /** Built-in avatar folder under public/avatars */
   avatar: "sample-photo" | "default";
   text: string;
@@ -17,12 +11,10 @@ export interface Settings {
 const KEY = "talking-avatar:settings";
 
 export const DEFAULTS: Settings = {
-  engine: "webspeech",
-  voice: { kokoro: "af_heart" },
+  voice: "",
   speed: 1,
   bgMode: "transparent",
   bgColor: "#dfe7f5",
-  kokoroCached: false,
   avatar: "sample-photo",
   text:
     "Hello, and welcome to this channel.\n" +
@@ -33,7 +25,14 @@ export const DEFAULTS: Settings = {
 export function loadSettings(): Settings {
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) return { ...DEFAULTS, ...JSON.parse(raw) };
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      return {
+        ...DEFAULTS,
+        ...parsed,
+        voice: typeof parsed.voice === "string" ? parsed.voice : (parsed.voice?.webspeech || ""),
+      };
+    }
   } catch {
     /* storage unavailable or corrupt: fall back to defaults */
   }

@@ -1,5 +1,3 @@
-export type EngineId = "kokoro" | "webspeech";
-
 export interface VoiceInfo {
   id: string;
   name: string;
@@ -46,7 +44,6 @@ export interface SpeechSession extends Emitter<SessionEvents> {
   pause(): void;
   resume(): void;
   stop(): void;
-  /** Present for audio-producing engines (Kokoro); used by AudioLipSync and export */
   audioNode?: AudioNode;
 }
 
@@ -56,8 +53,7 @@ export interface SpeakOptions {
 }
 
 export interface TTSEngine {
-  id: EngineId;
-  init(onProgress?: (p: number) => void): Promise<void>;
+  init(): Promise<void>;
   voices(): VoiceInfo[];
   speak(text: string, opts: SpeakOptions): SpeechSession;
 }

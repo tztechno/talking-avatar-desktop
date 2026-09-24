@@ -10,7 +10,7 @@
   <body>
     <header class="topbar">
       <h1>Talking Avatar</h1>
-      <span class="hint">Everything runs in your browser — no text leaves this page.</span>
+      <span class="hint">Runs completely offline on your device — no text leaves this application.</span>
     </header>
 
     <main class="layout">
@@ -57,20 +57,6 @@
       </section>
 
       <section class="controls-panel" aria-label="Controls">
-        <div class="segmented" role="radiogroup" aria-label="Speech engine">
-          <label><input type="radio" name="engine" value="kokoro" /> <span>Kokoro (AI voice, English)</span></label>
-          <label><input type="radio" name="engine" value="webspeech" /> <span>Browser voice</span></label>
-        </div>
-
-        <div id="kokoro-load" class="card" hidden>
-          <p>Kokoro runs a ~90&nbsp;MB model in your browser. It downloads once and is cached afterwards.</p>
-          <div class="row">
-            <button id="kokoro-load-btn" type="button">Download &amp; load model</button>
-            <progress id="kokoro-progress" max="1" value="0" hidden></progress>
-            <span id="kokoro-progress-label" class="muted"></span>
-          </div>
-        </div>
-
         <div class="row wrap">
           <label class="field grow">
             <span>Voice</span>
@@ -84,7 +70,7 @@
 
         <div class="text-wrap">
           <div class="text-backdrop" id="text-backdrop" aria-hidden="true"></div>
-          <textarea id="text" rows="9" spellcheck="false" aria-label="Text to speak"></textarea>
+          <textarea id="text" rows="11" spellcheck="false" aria-label="Text to speak"></textarea>
         </div>
 
         <div class="row wrap">
