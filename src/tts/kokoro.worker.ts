@@ -1,6 +1,33 @@
 /// <reference lib="webworker" />
+
+// In WKWebView (and Tauri custom protocols), self.caches.open() hangs indefinitely in Web Workers.
+// We disable CacheStorage in the worker so kokoro-js and transformers.js safely bypass CacheStorage.
+try {
+  Object.defineProperty(self, "caches", {
+    get() {
+      return {
+        open: () => Promise.reject(new Error("CacheStorage disabled in worker")),
+        match: () => Promise.resolve(undefined),
+        has: () => Promise.resolve(false),
+        delete: () => Promise.resolve(false),
+        keys: () => Promise.resolve([]),
+      };
+    },
+    configurable: true,
+  });
+} catch {
+  // ignore if not configurable
+}
+
+import { env as hfEnv } from "@huggingface/transformers";
 import { KokoroTTS, TextSplitterStream } from "kokoro-js";
 import type { FromWorker, ToWorker } from "./kokoro-protocol";
+
+// Ensure ONNX Runtime WASM doesn't attempt to spin up threads if SharedArrayBuffer is unavailable
+if (hfEnv?.backends?.onnx?.wasm) {
+  hfEnv.backends.onnx.wasm.numThreads = 1;
+  hfEnv.backends.onnx.wasm.proxy = false;
+}
 
 const MODEL_ID = "onnx-community/Kokoro-82M-v1.0-ONNX";
 
@@ -25,6 +52,11 @@ async function hasWebGPU(): Promise<boolean> {
     const isWebKit = /AppleWebKit/.test(ua) && !/Chrome|Chromium|CriOS|Edg/.test(ua);
     if (isWebKit) return false;
 
+    // In Tauri environment, always use wasm for rock-solid stability
+    if (typeof location !== "undefined" && (location.protocol === "tauri:" || location.hostname === "tauri.localhost")) {
+      return false;
+    }
+
     const gpu = (navigator as Navigator & { gpu?: { requestAdapter(): Promise<unknown> } }).gpu;
     return !!(gpu && (await gpu.requestAdapter()));
   } catch {
@@ -37,6 +69,8 @@ async function load(): Promise<void> {
   const device = webgpu ? "webgpu" : "wasm";
   // fp32 on WebGPU avoids quantization artefacts; q8 keeps the WASM download small
   const dtype = webgpu ? "fp32" : "q8";
+
+  console.log(`[kokoro-worker] Loading model ${MODEL_ID} (device=${device}, dtype=${dtype})`);
 
   // Aggregate per-file progress into one 0..1 value
   const files = new Map<string, { loaded: number; total: number }>();
@@ -55,6 +89,8 @@ async function load(): Promise<void> {
     },
   });
 
+  console.log(`[kokoro-worker] Model loaded successfully (${device})`);
+
   const voices = Object.entries(tts.voices).map(([id, v]) => ({
     id,
     name: v.name,
@@ -66,17 +102,25 @@ async function load(): Promise<void> {
 async function speak(msg: Extract<ToWorker, { type: "speak" }>): Promise<void> {
   if (!tts) throw new Error("Model not loaded");
   const voice = msg.voice as keyof KokoroTTS["voices"];
+  console.log(`[kokoro-worker] speak start: id=${msg.id}, voice=${voice}, sentences=${msg.sentences.length}`);
   for (let i = 0; i < msg.sentences.length; i++) {
+    const text = msg.sentences[i];
+    console.log(`[kokoro-worker] sentence ${i + 1}/${msg.sentences.length}: "${text}"`);
     let t0 = performance.now();
     // One stream per app-level sentence keeps highlight indices aligned with the UI.
     // kokoro-js 1.2.1 never closes the splitter it builds for a plain string, so the last
     // sentence would wait forever; pass our own and close it.
     const splitter = new TextSplitterStream();
-    splitter.push(msg.sentences[i]);
+    splitter.push(text);
     splitter.close();
     for await (const out of tts.stream(splitter, { voice, speed: msg.speed })) {
-      if (cancelled.has(msg.id)) return;
+      if (cancelled.has(msg.id)) {
+        console.log(`[kokoro-worker] speech id=${msg.id} cancelled`);
+        return;
+      }
       const audio = out.audio.audio;
+      const genMs = performance.now() - t0;
+      console.log(`[kokoro-worker] chunk generated: sentence ${i} in ${genMs.toFixed(0)}ms (${audio.length} samples)`);
       post(
         {
           type: "chunk",
@@ -85,13 +129,14 @@ async function speak(msg: Extract<ToWorker, { type: "speak" }>): Promise<void> {
           phonemes: out.phonemes,
           audio,
           sampleRate: out.audio.sampling_rate,
-          genMs: performance.now() - t0,
+          genMs,
         },
         [audio.buffer],
       );
       t0 = performance.now();
     }
   }
+  console.log(`[kokoro-worker] speak done: id=${msg.id}`);
   post({ type: "done", id: msg.id });
 }
 
@@ -108,11 +153,12 @@ self.onmessage = async (e: MessageEvent<ToWorker>) => {
       cancelled.add(msg.id);
     }
   } catch (err) {
+    console.error("[kokoro-worker] Error:", err);
     if (msg.type === "init") loading = null;
     post({
       type: "error",
       id: "id" in msg ? msg.id : undefined,
-      message: err instanceof Error ? err.message : String(err),
+      message: err instanceof Error ? (err.stack || err.message) : String(err),
     });
   }
 };
