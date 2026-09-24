@@ -19,6 +19,12 @@ const post = (msg: FromWorker, transfer: Transferable[] = []) =>
 
 async function hasWebGPU(): Promise<boolean> {
   try {
+    const ua = navigator.userAgent || "";
+    // Safari and WKWebView (e.g. Tauri on macOS) have an unstable WebGPU implementation
+    // in Web Workers that causes ONNX Runtime Web to hang indefinitely during inference.
+    const isWebKit = /AppleWebKit/.test(ua) && !/Chrome|Chromium|CriOS|Edg/.test(ua);
+    if (isWebKit) return false;
+
     const gpu = (navigator as Navigator & { gpu?: { requestAdapter(): Promise<unknown> } }).gpu;
     return !!(gpu && (await gpu.requestAdapter()));
   } catch {
